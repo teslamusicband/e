@@ -1,0 +1,95 @@
+WITH base_data AS (
+    -- Делаем предварительную выборку из таблицы table1 с нужными преобразованиями
+    SELECT 
+        concat('7', r.countnumber) as countnumber,
+        r.error_word,
+        r.comment_word,
+        r.id_of_errors,
+        r.datetime,
+        r.string_type,
+        r.string_comment,
+        r.number_of_string,
+        r.datetime_of_string,
+        r.datetime_of_update
+    FROM db1.table1 r
+),
+matched_data AS (
+    -- Джойним с table2 отдельно
+    SELECT 
+        b.*,
+        m.id as match_id
+    FROM base_data b
+    LEFT OUTER JOIN db1.table2 m 
+    ON b.countnumber = m.countnumber
+),
+additional_data AS (
+    -- Объединяем все варианты из table3 одним запросом
+    SELECT 
+        id,
+        FIRST_VALUE(additional) OVER (PARTITION BY id ORDER BY 
+            CASE additional 
+                WHEN 1 THEN 1 
+                WHEN 2 THEN 2 
+                WHEN 3 THEN 3 
+            END NULLS LAST) as additional,
+        FIRST_VALUE(some_else) OVER (PARTITION BY id ORDER BY 
+            CASE additional 
+                WHEN 1 THEN 1 
+                WHEN 2 THEN 2 
+                WHEN 3 THEN 3 
+            END NULLS LAST) as some_else,
+        FIRST_VALUE(another) OVER (PARTITION BY id ORDER BY 
+            CASE additional 
+                WHEN 1 THEN 1 
+                WHEN 2 THEN 2 
+                WHEN 3 THEN 3 
+            END NULLS LAST) as another,
+        FIRST_VALUE(data) OVER (PARTITION BY id ORDER BY 
+            CASE additional 
+                WHEN 1 THEN 1 
+                WHEN 2 THEN 2 
+                WHEN 3 THEN 3 
+            END NULLS LAST) as data,
+        FIRST_VALUE(types) OVER (PARTITION BY id ORDER BY 
+            CASE additional 
+                WHEN 1 THEN 1 
+                WHEN 2 THEN 2 
+                WHEN 3 THEN 3 
+            END NULLS LAST) as types,
+        FIRST_VALUE(applepies) OVER (PARTITION BY id ORDER BY 
+            CASE additional 
+                WHEN 1 THEN 1 
+                WHEN 2 THEN 2 
+                WHEN 3 THEN 3 
+            END NULLS LAST) as applepies,
+        FIRST_VALUE(cost) OVER (PARTITION BY id ORDER BY 
+            CASE additional 
+                WHEN 1 THEN 1 
+                WHEN 2 THEN 2 
+                WHEN 3 THEN 3 
+            END NULLS LAST) as cost
+    FROM db2.table3
+    WHERE additional IN (1, 2, 3)
+)
+SELECT 
+    m.*,
+    a.additional,
+    a.some_else,
+    a.another,
+    a.data,
+    a.types,
+    a.applepies,
+    a.cost
+FROM matched_data m
+LEFT OUTER JOIN additional_data a ON a.id = m.match_id
+
+
+
+config = {
+    # Прочие существующие настройки...
+    "spark.network.timeout": "86400s",  # 24 часа (максимально возможное значение)
+    "spark.rpc.io.connectionTimeout": "86400s",
+    "spark.rpc.askTimeout": "86400s",
+    "spark.sql.broadcastTimeout": "86400s",
+    "spark.worker.timeout": "86400"
+}
