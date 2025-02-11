@@ -1,0 +1,7 @@
+    "producer.override.max.block.ms": "60000",
+    "producer.override.delivery.timeout.ms": "120000",
+    "producer.override.reconnect.backoff.ms": "1000",
+    "producer.override.reconnect.backoff.max.ms": "10000",
+    "producer.override.retry.backoff.ms": "1000",
+    "offset.flush.timeout.ms": "10000",
+    "offset.flush.interval.ms": "60000",
