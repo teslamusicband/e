@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# Параметры подключения к PostgreSQL
+PG_HOST="localhost"  # Или IP Patroni-нод
+PG_PORT="5432"
+PG_USER="postgres"
+PG_DB="postgres"
+
+# Адрес VictoriaMetrics
+VM_URL="http://victoriametrics:8428/api/v1/import/prometheus"
+
+# SQL-запрос для проверки активных подключений (кроме postgres)
+QUERY="SELECT COUNT(*) FROM pg_stat_activity WHERE usename IS NOT NULL AND usename <> 'postgres';"
+
+# Выполняем запрос и получаем количество активных пользователей
+COUNT=$(psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_DB" -t -c "$QUERY" | tr -d '[:space:]')
+
+# Определяем значение метрики (1 если есть активные пользователи, иначе 0)
+METRIC_VALUE=0
+if [ "$COUNT" -gt 0 ]; then
+  METRIC_VALUE=1
+fi
+
+# Отправляем метрику в VictoriaMetrics
+METRIC_NAME="pg_active_non_postgres_users"
+TIMESTAMP=$(date +%s)
+echo "$METRIC_NAME $METRIC_VALUE $TIMESTAMP" | curl -s --data-binary @- "$VM_URL"
