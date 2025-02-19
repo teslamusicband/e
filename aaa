@@ -1,0 +1,114 @@
+# Kafka Consumer Exporter config
+kafka_consumer_exporter:
+  kafka:
+    brokers: ["kafka1:9092", "kafka2:9092", "kafka3:9092"]
+  metrics:
+    # Добавляем лейблы для идентификации отделов
+    static_labels:
+      application: "data_processor"
+    # Включаем детальные метрики по консьюмер-группам
+    consumer_groups:
+      enabled: true
+      labels: ["group_id", "topic", "partition"]
+
+# Java Application Metrics (application.yml)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: ["prometheus", "metrics", "health"]
+  metrics:
+    tags:
+      application: "data_processor"
+      # Добавляем теги для идентификации источника данных
+      department: "${DEPARTMENT_NAME:unknown}"
+      topic: "${KAFKA_TOPIC:unknown}"
+    enable:
+      # Включаем сбор метрик процессора и памяти
+      process.cpu: true
+      process.memory: true
+      # Метрики Kafka Consumer
+      kafka.consumer: true
+      # Метрики работы с ClickHouse
+      hikaricp: true
+      jdbc: true
+
+# Prometheus scrape config для VictoriaMetrics
+scrape_configs:
+  - job_name: 'kafka_consumer_exporter'
+    static_configs:
+      - targets: ['kafka_consumer_exporter:9308']
+    metric_relabel_configs:
+      # Извлекаем ID отдела из имени топика
+      - source_labels: [topic]
+        regex: 'топик_отдела_(\d+)'
+        target_label: department
+        replacement: 'Отдел ${1}'
+
+  - job_name: 'java_applications'
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        regex: 'data-processor'
+        action: keep
+
+# Grafana Dashboard
+{
+  "dashboard": {
+    "title": "Нагрузка по отделам",
+    "panels": [
+      {
+        "title": "CPU по отделам",
+        "type": "graph",
+        "datasource": "VictoriaMetrics",
+        "targets": [
+          {
+            "expr": "sum by (department) (rate(process_cpu_usage{application=\"data_processor\"}[5m]))",
+            "legendFormat": "{{department}}"
+          }
+        ]
+      },
+      {
+        "title": "Память по отделам",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum by (department) (jvm_memory_used_bytes{application=\"data_processor\"})",
+            "legendFormat": "{{department}}"
+          }
+        ]
+      },
+      {
+        "title": "Скорость обработки сообщений",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum by (department) (rate(kafka_consumer_group_messages_consumed_total{application=\"data_processor\"}[5m]))",
+            "legendFormat": "{{department}}"
+          }
+        ]
+      },
+      {
+        "title": "Latency запросов в ClickHouse",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum by (department, le) (rate(jdbc_connections_max_lifetime_seconds_bucket{application=\"data_processor\"}[5m])))",
+            "legendFormat": "{{department}}"
+          }
+        ]
+      }
+    ],
+    "templating": {
+      "list": [
+        {
+          "name": "department",
+          "type": "query",
+          "query": "label_values(department)",
+          "multi": true
+        }
+      ]
+    }
+  }
+}
