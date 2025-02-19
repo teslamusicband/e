@@ -1,0 +1,76 @@
+SecretStore и ExternalSecret - это ресурсы от External Secrets Operator (ESO), который позволяет получать секреты из внешних хранилищ (AWS Secrets Manager, Hashicorp Vault, Azure Key Vault и т.д.) и создавать из них Kubernetes Secrets.
+
+**Как посмотреть существующие ресурсы на другом кластере:**
+```bash
+# Посмотреть SecretStore
+kubectl get secretstore -A
+kubectl get secretstore <name> -n <namespace> -o yaml
+
+# Посмотреть ExternalSecret
+kubectl get externalsecret -A
+kubectl get externalsecret <name> -n <namespace> -o yaml
+```
+
+Вот пример типичной структуры этих ресурсов:
+
+1. **SecretStore** (определяет подключение к внешнему хранилищу):
+```yaml
+apiVersion: external-secrets.io/v1beta1
+kind: SecretStore
+metadata:
+  name: aws-secret-store
+  namespace: your-namespace
+spec:
+  provider:
+    aws:
+      service: SecretsManager
+      region: eu-west-1
+      auth:
+        secretRef:
+          accessKeyIDSecretRef:
+            name: aws-secret
+            key: access-key-id
+          secretAccessKeySecretRef:
+            name: aws-secret
+            key: secret-access-key
+```
+
+2. **ExternalSecret** (определяет, какие секреты получать):
+```yaml
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: example-secret
+  namespace: your-namespace
+spec:
+  refreshInterval: "1h"
+  secretStoreRef:
+    name: aws-secret-store
+    kind: SecretStore
+  target:
+    name: example-k8s-secret
+  data:
+  - secretKey: database-password
+    remoteRef:
+      key: prod/database
+      property: password
+```
+
+Чтобы использовать эти ресурсы, нужно:
+
+1. Установить External Secrets Operator:
+```bash
+helm repo add external-secrets https://charts.external-secrets.io
+helm install external-secrets external-secrets/external-secrets -n external-secrets --create-namespace
+```
+
+2. Проверить установку:
+```bash
+kubectl get pods -n external-secrets
+```
+
+3. Создать SecretStore для подключения к вашему хранилищу секретов
+
+4. Создать ExternalSecret для получения конкретных секретов
+
+Какое внешнее хранилище секретов вы планируете использовать? Я могу показать более конкретный пример для вашего случая.
