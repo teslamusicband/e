@@ -1,0 +1,215 @@
+Разберём оба варианта настройки SSL в Sarama:
+
+### Вариант 1: С .crt, .key и trust-CA.crt файлами
+
+```go
+package main
+
+import (
+	"crypto/tls"
+	"crypto/x509"
+	"io/ioutil"
+	"log"
+
+	"github.com/Shopify/sarama"
+)
+
+func main() {
+	config := sarama.NewConfig()
+	
+	// Включение TLS
+	config.Net.TLS.Enable = true
+	
+	// Создание TLS конфигурации с использованием .crt и .key файлов
+	tlsConfig, err := createTLSConfig("trust-CA.crt", "client.crt", "client.key")
+	if err != nil {
+		log.Fatalf("Ошибка при создании TLS конфигурации: %v", err)
+	}
+	config.Net.TLS.Config = tlsConfig
+	
+	// Дополнительные настройки Sarama
+	config.Net.SASL.Enable = true
+	config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA256
+	config.Net.SASL.User = "ваш_пользователь"
+	config.Net.SASL.Password = "ваш_пароль"
+	
+	// Настройка версии Kafka
+	version, err := sarama.ParseKafkaVersion("3.7.0")
+	if err != nil {
+		log.Fatalf("Ошибка при парсинге версии Kafka: %v", err)
+	}
+	config.Version = version
+	
+	// Адреса брокеров
+	brokers := []string{"kafka-host1:9092", "kafka-host2:9092"}
+	
+	client, err := sarama.NewClient(brokers, config)
+	if err != nil {
+		log.Fatalf("Ошибка при создании клиента: %v", err)
+	}
+	defer client.Close()
+	
+	log.Println("Успешное подключение к Kafka")
+}
+
+func createTLSConfig(caCertFile, clientCertFile, clientKeyFile string) (*tls.Config, error) {
+	// Создание пула CA сертификатов
+	caCert, err := ioutil.ReadFile(caCertFile)
+	if err != nil {
+		return nil, err
+	}
+	
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(caCert)
+	
+	// Загрузка клиентского сертификата и ключа
+	clientCert, err := tls.LoadX509KeyPair(clientCertFile, clientKeyFile)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Создание TLS конфигурации
+	tlsConfig := &tls.Config{
+		RootCAs:      caCertPool,
+		Certificates: []tls.Certificate{clientCert},
+		MinVersion:   tls.VersionTLS12,
+	}
+	
+	return tlsConfig, nil
+}
+
+```
+
+### Вариант 2: С truststore.jks файлом
+
+JKS (Java KeyStore) файлы не могут быть напрямую использованы в Go. Вам нужно сначала извлечь сертификаты из JKS в формат PEM. Вот как это можно сделать:
+
+1. Сначала извлеките сертификаты из JKS файла с помощью `keytool`:
+
+```bash
+# Извлечение CA сертификата из truststore.jks
+keytool -exportcert -keystore truststore.jks -alias ca-alias -file ca.der -storepass password
+
+# Преобразование DER в PEM формат
+openssl x509 -inform der -in ca.der -out ca.pem
+
+# Если есть клиентский сертификат и ключ в keystore.jks
+keytool -importkeystore -srckeystore keystore.jks -destkeystore keystore.p12 -deststoretype PKCS12
+openssl pkcs12 -in keystore.p12 -out client.pem -nokeys
+openssl pkcs12 -in keystore.p12 -out client.key -nocerts -nodes
+```
+
+2. Затем используйте извлеченные PEM файлы в вашем коде:
+
+```go
+package main
+
+import (
+	"crypto/tls"
+	"crypto/x509"
+	"io/ioutil"
+	"log"
+
+	"github.com/Shopify/sarama"
+)
+
+func main() {
+	config := sarama.NewConfig()
+	
+	// Включение TLS
+	config.Net.TLS.Enable = true
+	
+	// Создание TLS конфигурации с использованием извлеченных из JKS сертификатов
+	tlsConfig, err := createTLSConfigFromJKS("ca.pem", "client.pem", "client.key")
+	if err != nil {
+		log.Fatalf("Ошибка при создании TLS конфигурации: %v", err)
+	}
+	config.Net.TLS.Config = tlsConfig
+	
+	// Остальные настройки Sarama (SASL, версия и т.д.)
+	config.Net.SASL.Enable = true
+	config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA256
+	config.Net.SASL.User = "ваш_пользователь"
+	config.Net.SASL.Password = "ваш_пароль"
+	
+	version, err := sarama.ParseKafkaVersion("3.7.0")
+	if err != nil {
+		log.Fatalf("Ошибка при парсинге версии Kafka: %v", err)
+	}
+	config.Version = version
+	
+	// Адреса брокеров
+	brokers := []string{"kafka-host1:9092", "kafka-host2:9092"}
+	
+	client, err := sarama.NewClient(brokers, config)
+	if err != nil {
+		log.Fatalf("Ошибка при создании клиента: %v", err)
+	}
+	defer client.Close()
+	
+	log.Println("Успешное подключение к Kafka")
+}
+
+func createTLSConfigFromJKS(caPemFile, clientCertFile, clientKeyFile string) (*tls.Config, error) {
+	// Чтение CA сертификата (извлеченного из truststore.jks)
+	caPem, err := ioutil.ReadFile(caPemFile)
+	if err != nil {
+		return nil, err
+	}
+	
+	caCertPool := x509.NewCertPool()
+	if !caCertPool.AppendCertsFromPEM(caPem) {
+		return nil, err
+	}
+	
+	// Загрузка клиентского сертификата и ключа (если они используются)
+	var certs []tls.Certificate
+	if clientCertFile != "" && clientKeyFile != "" {
+		clientCert, err := tls.LoadX509KeyPair(clientCertFile, clientKeyFile)
+		if err != nil {
+			return nil, err
+		}
+		certs = []tls.Certificate{clientCert}
+	}
+	
+	// Создание TLS конфигурации
+	tlsConfig := &tls.Config{
+		RootCAs:      caCertPool,
+		Certificates: certs,
+		MinVersion:   tls.VersionTLS12,
+	}
+	
+	return tlsConfig, nil
+}
+
+```
+
+### Советы по диагностике SSL проблем:
+
+1. **Проверьте права доступа к файлам сертификатов**:
+   ```bash
+   chmod 600 client.key
+   ```
+
+2. **Проверьте валидность сертификатов**:
+   ```bash
+   openssl verify -CAfile trust-CA.crt client.crt
+   ```
+
+3. **Проверьте SSL соединение с брокером**:
+   ```bash
+   openssl s_client -connect kafka-host:9092 -tls1_2 -CAfile trust-CA.crt -cert client.crt -key client.key
+   ```
+
+4. **Логирование TLS**:
+   ```go
+   // Добавьте перед созданием клиента
+   sarama.Logger = log.New(os.Stdout, "[sarama] ", log.LstdFlags)
+   ```
+
+5. **Временно разрешите небезопасные соединения для отладки**:
+   ```go
+   tlsConfig.InsecureSkipVerify = true // Только для отладки!
+   ```
+
+Выберите подход, который лучше соответствует вашей инфраструктуре сертификатов.
