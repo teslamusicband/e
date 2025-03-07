@@ -1,0 +1,106 @@
+package main
+
+import (
+	"crypto/tls"
+	"crypto/x509"
+	"fmt"
+	"io/ioutil"
+	"log"
+	"os"
+	"os/signal"
+	"time"
+
+	"github.com/Shopify/sarama"
+)
+
+func main() {
+	// Настройка логирования
+	sarama.Logger = log.New(os.Stdout, "[sarama] ", log.LstdFlags)
+
+	// Создание конфигурации
+	config := sarama.NewConfig()
+	
+	// Базовые настройки соединения
+	config.Net.DialTimeout = 10 * time.Second
+	config.Net.ReadTimeout = 30 * time.Second
+	config.Net.WriteTimeout = 30 * time.Second
+	config.Version = sarama.V2_3_0_0 // Укажите правильную версию Kafka
+	
+	// Конфигурация TLS/SSL
+	config.Net.TLS.Enable = true
+	tlsConfig, err := createTLSConfig("ca-cert.pem", "client-cert.pem", "client-key.pem")
+	if err != nil {
+		log.Fatalf("Ошибка при настройке TLS: %v", err)
+	}
+	config.Net.TLS.Config = tlsConfig
+	
+	// Конфигурация SASL (SCRAM-SHA-256)
+	config.Net.SASL.Enable = true
+	config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA256
+	config.Net.SASL.User = "your-username"     // Замените на ваш логин
+	config.Net.SASL.Password = "your-password" // Замените на ваш пароль
+	config.Net.SASL.Handshake = true
+	
+	// Настройки для продюсера
+	config.Producer.RequiredAcks = sarama.WaitForAll
+	config.Producer.Retry.Max = 5
+	config.Producer.Return.Successes = true
+	
+	// Адреса брокеров Kafka
+	brokers := []string{"kafka-broker:9093"} // Обычно SSL порт - 9093
+	
+	// Подключение к кластеру
+	client, err := sarama.NewClient(brokers, config)
+	if err != nil {
+		log.Fatalf("Ошибка при создании клиента: %v", err)
+	}
+	defer func() {
+		if err := client.Close(); err != nil {
+			log.Printf("Ошибка при закрытии клиента: %v", err)
+		}
+	}()
+	
+	log.Println("Успешное подключение к Kafka с SSL и SCRAM-SHA-256!")
+	
+	// Вывод информации о брокерах для диагностики
+	brokerList := client.Brokers()
+	log.Printf("Доступные брокеры: %d", len(brokerList))
+	for _, broker := range brokerList {
+		log.Printf("Брокер: %s", broker.Addr())
+	}
+	
+	// Перехват сигналов для корректного завершения
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt)
+	<-signals
+	log.Println("Завершение работы...")
+}
+
+// Функция для настройки TLS
+func createTLSConfig(caCertFile, clientCertFile, clientKeyFile string) (*tls.Config, error) {
+	tlsConfig := tls.Config{
+		InsecureSkipVerify: false, // Установите в true только для тестирования!
+		MinVersion:         tls.VersionTLS12,
+	}
+	
+	// Загрузка CA сертификата
+	caCert, err := ioutil.ReadFile(caCertFile)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка чтения CA сертификата: %v", err)
+	}
+	
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(caCert)
+	tlsConfig.RootCAs = caCertPool
+	
+	// Загрузка клиентского сертификата и ключа (если используются)
+	if clientCertFile != "" && clientKeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(clientCertFile, clientKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("ошибка загрузки сертификата/ключа клиента: %v", err)
+		}
+		tlsConfig.Certificates = []tls.Certificate{cert}
+	}
+	
+	return &tlsConfig, nil
+}
