@@ -1,0 +1,74 @@
+package main
+
+import (
+	"crypto/tls"
+	"crypto/x509"
+	"io/ioutil"
+	"log"
+
+	"github.com/Shopify/sarama"
+)
+
+func main() {
+	config := sarama.NewConfig()
+	
+	// Включение TLS
+	config.Net.TLS.Enable = true
+	
+	// Создание TLS конфигурации с использованием .crt и .key файлов
+	tlsConfig, err := createTLSConfig("trust-CA.crt", "client.crt", "client.key")
+	if err != nil {
+		log.Fatalf("Ошибка при создании TLS конфигурации: %v", err)
+	}
+	config.Net.TLS.Config = tlsConfig
+	
+	// Дополнительные настройки Sarama
+	config.Net.SASL.Enable = true
+	config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA256
+	config.Net.SASL.User = "ваш_пользователь"
+	config.Net.SASL.Password = "ваш_пароль"
+	
+	// Настройка версии Kafka
+	version, err := sarama.ParseKafkaVersion("3.7.0")
+	if err != nil {
+		log.Fatalf("Ошибка при парсинге версии Kafka: %v", err)
+	}
+	config.Version = version
+	
+	// Адреса брокеров
+	brokers := []string{"kafka-host1:9092", "kafka-host2:9092"}
+	
+	client, err := sarama.NewClient(brokers, config)
+	if err != nil {
+		log.Fatalf("Ошибка при создании клиента: %v", err)
+	}
+	defer client.Close()
+	
+	log.Println("Успешное подключение к Kafka")
+}
+
+func createTLSConfig(caCertFile, clientCertFile, clientKeyFile string) (*tls.Config, error) {
+	// Создание пула CA сертификатов
+	caCert, err := ioutil.ReadFile(caCertFile)
+	if err != nil {
+		return nil, err
+	}
+	
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(caCert)
+	
+	// Загрузка клиентского сертификата и ключа
+	clientCert, err := tls.LoadX509KeyPair(clientCertFile, clientKeyFile)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Создание TLS конфигурации
+	tlsConfig := &tls.Config{
+		RootCAs:      caCertPool,
+		Certificates: []tls.Certificate{clientCert},
+		MinVersion:   tls.VersionTLS12,
+	}
+	
+	return tlsConfig, nil
+}
