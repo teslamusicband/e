@@ -1,0 +1,11 @@
+type: "MyDataType"
+match:
+  - series_selector: '{__name__="data_consumed", topic="mykafkatopic"}'
+    value_selector: '> 0'
+mapping:
+  constant_labels:
+    name: "my:data:hw:cp:type"
+  source_labels:
+    topickafka: topic
+    type: special_id
+    special_id: special_id
