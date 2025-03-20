@@ -1,0 +1,15 @@
+groups:
+  - name: custom_metric_rules
+    rules:
+      - record: custom_metric
+        expr: |
+          # Используем исходную метрику
+          source_metric
+          # Добавляем метку topic из значения topic_consumed
+          * on() group_left(topic) label_replace(source_metric, "topic", "$1", "topic_consumed", "(.*)")
+          # Добавляем метку type из значения oid_consumed
+          * on() group_left(type) label_replace(source_metric, "type", "$1", "oid_consumed", "(.*)")
+          # Преобразуем k8s_node_name в FQDN и добавляем как метку node
+          * on() group_left(node) label_replace(source_metric, "node", "$1.domain.com", "k8s_node_name", "(.*)")
+          # Добавляем текущий таймстамп как значение метрики
+          * on() group_left() (timestamp(source_metric) / 1000)
