@@ -1,0 +1,28 @@
+groups:
+  - name: custom_status_rules
+    rules:
+      # Правило 1: Если lastdatedatareceived < now - 1d, то status="OFF"
+      - record: custom_status
+        expr: |
+          (lastdatedatareceived < (time() - 86400))
+          * on() group_left(status) (vector(1) and label_replace(vector(0), "status", "OFF", "", ""))
+        labels:
+          status: "OFF"
+
+      # Правило 2: Если lastdatedatareceived >= now - 1d и round(rate(records_rejected[1m]) * 60) > 0, то status="ERROR"
+      - record: custom_status
+        expr: |
+          (lastdatedatareceived >= (time() - 86400))
+          * (round(rate(records_rejected[1m]) * 60) > bool 0)
+          * on() group_left(status) (vector(1) and label_replace(vector(0), "status", "ERROR", "", ""))
+        labels:
+          status: "ERROR"
+
+      # Правило 3: Если lastdatedatareceived >= now - 1d и round(rate(records_rejected[1m]) * 60) <= 0, то status="OK"
+      - record: custom_status
+        expr: |
+          (lastdatedatareceived >= (time() - 86400))
+          * (round(rate(records_rejected[1m]) * 60) <= bool 0)
+          * on() group_left(status) (vector(1) and label_replace(vector(0), "status", "OK", "", ""))
+        labels:
+          status: "OK"
