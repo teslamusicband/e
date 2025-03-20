@@ -1,0 +1,16 @@
+(
+  (lastdatedatareceived < (time() - 86400))
+  * on() group_left(status) (status{status="OFF"})
+)
+or
+(
+  (lastdatedatareceived >= (time() - 86400))
+  * (round(rate(records_rejected[1m]) * 60) > bool 0)
+  * on() group_left(status) (status{status="ERROR"})
+)
+or
+(
+  (lastdatedatareceived >= (time() - 86400))
+  * (round(rate(records_rejected[1m]) * 60) <= bool 0)
+  * on() group_left(status) (status{status="OK"})
+)
