@@ -1,0 +1,15 @@
+groups:
+- name: "custom_rules"
+  rules:
+  - record: "custom_topic_consumed"
+    expr: |
+      label_replace(
+        label_replace(
+          label_replace(
+            source_metric, 
+            "topic", "topic_${1}", "topic_consumed", "(.*)"
+          ),
+          "type", "type_${1}", "oid_consumed", "(.*)"
+        ),
+        "k8s_node_name", "${1}.domain.com", "k8s_node_name", "([^\\.]+)"
+      )
