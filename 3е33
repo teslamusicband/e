@@ -1,0 +1,9 @@
+groups:
+  - name: custom_metric_rules
+    rules:
+      - record: custom_metric
+        expr: |
+          source_metric{topic_consumed!="", oid_consumed!="", k8s_node_name!=""}
+          * on() group_left(topic) label_replace(source_metric, "topic", "$1", "topic_consumed", "(.*)")
+          * on() group_left(type) label_replace(source_metric, "type", "$1", "oid_consumed", "(.*)")
+          * on() group_left(node) label_replace(source_metric, "node", "$1.domain.com", "k8s_node_name", "(.*)")
