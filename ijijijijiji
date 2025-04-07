@@ -1,0 +1,21 @@
+Для получения значения retention.ms из всех топиков Kafka одной командой в Linux вы можете использовать следующий подход с kafka-configs.sh:
+
+```bash
+kafka-configs.sh --bootstrap-server <broker_host>:<port> --entity-type topics --describe | grep -E "topic|retention.ms"
+```
+
+Эта команда выведет все конфигурации топиков, а grep отфильтрует только названия топиков и параметры retention.ms.
+
+Если вы хотите получить более структурированный вывод, можно использовать скрипт с awk:
+
+```bash
+kafka-topics.sh --bootstrap-server <broker_host>:<port> --list | xargs -I {} kafka-configs.sh --bootstrap-server <broker_host>:<port> --entity-type topics --entity-name {} --describe | grep -E "{}|retention.ms"
+```
+
+или более компактный вариант:
+
+```bash
+for topic in $(kafka-topics.sh --bootstrap-server <broker_host>:<port> --list); do echo "Topic: $topic"; kafka-configs.sh --bootstrap-server <broker_host>:<port> --entity-type topics --entity-name $topic --describe | grep retention.ms; echo; done
+```
+
+Не забудьте заменить `<broker_host>:<port>` на адрес вашего Kafka брокера.
